@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Image Processor</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .preview-container {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+      }
+      .preview-box {
+        width: 45%;
+        border: 2px dashed #ccc;
+        padding: 10px;
+        text-align: center;
+      }
+      .preview-box img {
+        max-width: 100%;
+        max-height: 300px;
+        object-fit: contain;
+      }
+      .hidden {
+        display: none;
+      }
+      .disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Image Processor</h1>
+
+    {% if error %}
+    <p style="color: red">{{ error }}</p>
+    {% endif %}
+
+    <form id="imageProcessForm" method="POST" enctype="multipart/form-data">
+      <h3>Select Image</h3>
+      <input
+        type="file"
+        id="imageInput"
+        name="image"
+        accept="image/*"
+        required
+        onchange="previewImage(event)"
+      />
+
+      <div class="preview-container">
+        <div class="preview-box" id="previewContainer">
+          <p>Image Preview</p>
+          <img id="imagePreview" class="hidden" alt="Image Preview" />
+          <div id="imageDetails" class="hidden">
+            <p>File Name: <span id="fileName"></span></p>
+            <p>File Size: <span id="fileSize"></span></p>
+            <p>Dimensions: <span id="imageDimensions"></span></p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Resize Options</h3>
+      <div>
+        <label>
+          Width (pixels):
+          <input
+            type="number"
+            id="widthInput"
+            name="width"
+            min="0"
+            onchange="handleDimensionInput('width')"
+            onkeyup="handleDimensionInput('width')"
+          />
+        </label>
+        <label>
+          Height (pixels):
+          <input
+            type="number"
+            id="heightInput"
+            name="height"
+            min="0"
+            onchange="handleDimensionInput('height')"
+            onkeyup="handleDimensionInput('height')"
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            id="aspectRatioCheckbox"
+            name="aspect_ratio"
+            onchange="handleAspectRatioToggle()"
+          />
+          Maintain Aspect Ratio
+        </label>
+      </div>
+
+      <h3>Compression</h3>
+      <label>
+        Quality (1-100):
+        <input type="number" name="compression" min="1" max="100" value="85" />
+      </label>
+
+      <br /><br />
+      <input type="submit" value="Process Image" />
+    </form>
+
+    {% if processed_image %}
+    <h2>Results</h2>
+    <div class="preview-container">
+      <div class="preview-box">
+        <h3>Original Image</h3>
+        <img
+          src="{{ url_for('static', filename=original_image) }}"
+          alt="Original Image"
+        />
+        <p>Size: {{ original_size }}</p>
+        <p>Dimensions: {{ old_dimension }}</p>
+      </div>
+      <div class="preview-box">
+        <h3>Processed Image</h3>
+        <img
+          src="{{ url_for('static', filename=processed_image) }}"
+          alt="Processed Image"
+        />
+        <p>Size: {{ new_size }} (Reduction: {{ size_reduction }})</p>
+        <p>New Dimensions: {{ new_dimension }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <script>
+      window.onload = function () {
+        document.getElementById("imageProcessForm").reset();
+
+        // Clear any existing previews
+        const preview = document.getElementById("imagePreview");
+        const imageDetails = document.getElementById("imageDetails");
+
+        if (preview) preview.classList.add("hidden");
+        if (imageDetails) imageDetails.classList.add("hidden");
+      };
+      function handleAspectRatioToggle() {
+        const aspectRatioCheckbox = document.getElementById(
+          "aspectRatioCheckbox"
+        );
+        const widthInput = document.getElementById("widthInput");
+        const heightInput = document.getElementById("heightInput");
+
+        if (aspectRatioCheckbox.checked) {
+          // If a value exists in one input, disable the other
+          if (widthInput.value && !heightInput.value) {
+            heightInput.disabled = true;
+          } else if (heightInput.value && !widthInput.value) {
+            widthInput.disabled = true;
+          }
+        } else {
+          // Enable both inputs when aspect ratio is unchecked
+          widthInput.disabled = false;
+          heightInput.disabled = false;
+        }
+      }
+
+      function handleDimensionInput(inputType) {
+        const aspectRatioCheckbox = document.getElementById(
+          "aspectRatioCheckbox"
+        );
+        const widthInput = document.getElementById("widthInput");
+        const heightInput = document.getElementById("heightInput");
+
+        // Only apply logic if aspect ratio is checked
+        if (aspectRatioCheckbox.checked) {
+          if (inputType === "width") {
+            // If width is entered, disable height
+            if (widthInput.value) {
+              heightInput.disabled = true;
+              heightInput.value = ""; // Clear height input
+            } else {
+              heightInput.disabled = false;
+            }
+          } else if (inputType === "height") {
+            // If height is entered, disable width
+            if (heightInput.value) {
+              widthInput.disabled = true;
+              widthInput.value = ""; // Clear width input
+            } else {
+              widthInput.disabled = false;
+            }
+          }
+        }
+      }
+      function previewImage(event) {
+        const file = event.target.files[0];
+        const preview = document.getElementById("imagePreview");
+        const previewContainer = document.getElementById("previewContainer");
+        const imageDetails = document.getElementById("imageDetails");
+        const fileName = document.getElementById("fileName");
+        const fileSize = document.getElementById("fileSize");
+        const imageDimensions = document.getElementById("imageDimensions");
+
+        // Reset previous preview
+        preview.classList.add("hidden");
+        imageDetails.classList.add("hidden");
+
+        if (file) {
+          // Create a FileReader
+          const reader = new FileReader();
+
+          reader.onload = function (e) {
+            // Create an image to get dimensions
+            const img = new Image();
+            img.onload = function () {
+              // Show preview image
+              preview.src = e.target.result;
+              preview.classList.remove("hidden");
+
+              // Populate file details
+              fileName.textContent = file.name;
+              fileSize.textContent = formatFileSize(file.size);
+              imageDimensions.textContent = `${img.width} x ${img.height} px`;
+              imageDetails.classList.remove("hidden");
+            };
+            img.src = e.target.result;
+          };
+
+          // Read the image file
+          reader.readAsDataURL(file);
+        }
+      }
+
+      function previewImage(event) {
+        const file = event.target.files[0];
+        const preview = document.getElementById("imagePreview");
+        const previewContainer = document.getElementById("previewContainer");
+        const imageDetails = document.getElementById("imageDetails");
+        const fileName = document.getElementById("fileName");
+        const fileSize = document.getElementById("fileSize");
+        const imageDimensions = document.getElementById("imageDimensions");
+
+        // Reset previous preview
+        preview.classList.add("hidden");
+        imageDetails.classList.add("hidden");
+
+        if (file) {
+          // Create a FileReader
+          const reader = new FileReader();
+
+          reader.onload = function (e) {
+            // Create an image to get dimensions
+            const img = new Image();
+            img.onload = function () {
+              // Show preview image
+              preview.src = e.target.result;
+              preview.classList.remove("hidden");
+
+              // Populate file details
+              fileName.textContent = file.name;
+              fileSize.textContent = formatFileSize(file.size);
+              imageDimensions.textContent = `${img.width} x ${img.height} px`;
+              imageDetails.classList.remove("hidden");
+            };
+            img.src = e.target.result;
+          };
+
+          // Read the image file
+          reader.readAsDataURL(file);
+        }
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + " bytes";
+        else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+        else return (bytes / 1048576).toFixed(1) + " MB";
+      }
+    </script>
+  </body>
+</html>
